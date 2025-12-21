@@ -17,6 +17,7 @@ import (
 // draw the game entities
 // update the objects/entities
 // destroy them when no longer in use
+
 func main() {
 	game := Game{
 		paused:       false,
@@ -30,6 +31,9 @@ func main() {
 			height: 20,
 			width:  100,
 			color:  rl.Color{},
+		},
+		board: Score{
+			current: 0,
 		},
 	}
 	//Create game entities
@@ -45,6 +49,7 @@ func main() {
 		//draw game entities
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Black)
+		game.board.draw()
 		game.ball.draw()
 		game.pad.draw()
 		rl.EndDrawing()
@@ -62,6 +67,16 @@ type Game struct {
 	windowHeight int32
 	ball         Ball
 	pad          Paddle
+	board        Score
+}
+type Score struct {
+	current int32
+}
+
+func (s *Score) draw() {
+	rl.DrawText("SCORE:", 20, 20, 30, rl.Maroon)
+	scoreText := fmt.Sprintf("%d", s.current) // Convert int32 to string
+	rl.DrawText(scoreText, 20, 60, 20, rl.White)
 }
 
 // NewGame init game
@@ -76,6 +91,7 @@ func (g *Game) init() {
 	g.ball.radius = 5
 	g.ball.centerX = 400
 	g.ball.centerY = 300
+	g.board.current = 0
 }
 
 // Ball draw the Circle
@@ -143,6 +159,7 @@ func (g *Game) update() {
 		// Set horizontal velocity based on hit position
 		// Multiply by a factor to control the maximum angle (e.g., 200)
 		g.ball.velocityX = hitPosition * 200
+		g.board.current += 1
 	}
 
 	//movement
