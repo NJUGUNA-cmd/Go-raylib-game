@@ -7,12 +7,10 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
-// To do:structs for the ball
-//
+//	ball
 //	paddle
 //	bricks
 //
-// TO DO: so we need to structure this.
 // Create the game entities/objects
 // draw the game entities
 // update the objects/entities
@@ -32,12 +30,20 @@ func main() {
 			width:  100,
 			color:  rl.Color{},
 		},
+		brick: Brick{
+			posX:   0,
+			posY:   0,
+			width:  40,
+			height: 20,
+		},
 		board: Score{
 			current: 0,
 		},
 	}
 	//Create game entities
 	NewGame(&game)
+
+	n := int(game.windowWidth / game.brick.width)
 
 	rl.InitWindow(game.windowWidth, game.windowHeight, "Hoorah! A window")
 
@@ -52,6 +58,13 @@ func main() {
 		game.board.draw()
 		game.ball.draw()
 		game.pad.draw()
+
+		for i := 0; i <= n; i++ {
+			//in the draw function we need to increment the x and y axes
+			rl.DrawRectangle(game.brick.posX+int32(i), game.brick.posY, game.brick.width, game.brick.height, rl.Blue)
+
+			//game.brick.draw()
+		}
 		rl.EndDrawing()
 		//update entities
 		game.update()
@@ -67,6 +80,7 @@ type Game struct {
 	windowHeight int32
 	ball         Ball
 	pad          Paddle
+	brick        Brick
 	board        Score
 }
 type Score struct {
@@ -77,6 +91,18 @@ func (s *Score) draw() {
 	rl.DrawText("SCORE:", 20, 20, 30, rl.Maroon)
 	scoreText := fmt.Sprintf("%d", s.current) // Convert int32 to string
 	rl.DrawText(scoreText, 20, 60, 20, rl.White)
+}
+
+type Brick struct {
+	posX, posY    int32
+	width, height int32
+}
+
+func (b *Brick) draw() {
+	//draw multiple bricks
+	//call this function multiple times while spacing the bricks by x amount in both axes
+
+	rl.DrawRectangle(b.posX, b.posY, b.width, b.height, rl.Blue)
 }
 
 // NewGame init game
@@ -125,13 +151,6 @@ func (g *Game) update() {
 		g.ball.velocityX *= -1
 	}
 
-	//collision for the entities(ball and player(pad)
-	//how to detect the edges of the pad?
-	//we can get the center of the rectangle
-	//maybe a better idea is to get the area of the rectangle
-	//take current pos x and Y for continued tracking of rectangle across the grid
-	//area of rectangle is LxW
-	//actually raylib has inbuilt
 	ballCenter := rl.Vector2{X: float32(g.ball.centerX), Y: float32(g.ball.centerY)}
 	paddleRec := rl.Rectangle{
 		X:      float32(g.pad.posX),
@@ -143,7 +162,6 @@ func (g *Game) update() {
 	if rl.CheckCollisionCircleRec(ballCenter, g.ball.radius, paddleRec) {
 		// Collision detected! Reverse ball direction
 		g.ball.velocityY *= -1
-		//
 		// Calculate where on the paddle the ball hit (0 = left edge, 1 = right edge)
 		paddleCenter := g.pad.posX + g.pad.width/2
 		hitPosition := float32(g.ball.centerX-paddleCenter) / float32(g.pad.width/2)
@@ -172,13 +190,7 @@ func (g *Game) update() {
 
 }
 
-// updateCenterY method with pointer receiver
-//TODO: SET A CAP FOR BALL VELOCITY
-//TODO:CODE WALLS LOGIC(NO OBJECT SHOULD LEAVE THE SCREEN.
-//NOTE: I will need a Universal update function for all entities.
-
 func (b *Ball) update(dt float32) {
-	//b.velocityY += 10                    // gravity
 	b.centerY += int32(b.velocityY * dt) //convert the result to int32
 	b.centerX += int32(b.velocityX * dt)
 	fmt.Printf("dt is %f and %f velocity.\n", dt, b.velocityY)
