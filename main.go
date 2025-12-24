@@ -23,14 +23,14 @@ func main() {
 		windowWidth:  800,
 		windowHeight: 600,
 		player:       Player{centerX: int32(400), centerY: int32(300), radius: 15},
-		pad: Paddle{
+		pad: Ground{
 			posX:   300,
 			posY:   550,
 			height: 20,
 			width:  100,
 			color:  rl.Color{},
 		},
-		brick: Brick{
+		brick: Enemy{
 			posX:   0,
 			posY:   0,
 			width:  40,
@@ -79,8 +79,8 @@ type Game struct {
 	windowWidth  int32
 	windowHeight int32
 	player       Player
-	pad          Paddle
-	brick        Brick
+	pad          Ground
+	brick        Enemy
 	board        Score
 }
 type Score struct {
@@ -93,12 +93,12 @@ func (s *Score) draw() {
 	rl.DrawText(scoreText, 20, 60, 20, rl.White)
 }
 
-type Brick struct {
+type Enemy struct {
 	posX, posY    int32
 	width, height int32
 }
 
-func (b *Brick) draw() {
+func (b *Enemy) draw() {
 	//draw multiple bricks
 	//call this function multiple times while spacing the bricks by x amount in both axes
 
@@ -108,7 +108,6 @@ func (b *Brick) draw() {
 // NewGame init game
 func NewGame(g *Game) {
 	g.init()
-	return
 }
 
 func (g *Game) init() {
@@ -193,31 +192,29 @@ func (g *Game) update() {
 func (b *Player) update(dt float32) {
 	b.centerY += int32(b.velocityY * dt) //convert the result to int32
 	b.centerX += int32(b.velocityX * dt)
-	fmt.Printf("dt is %f and %f velocity.\n", dt, b.velocityY)
 }
 func (b *Player) draw() {
 	rl.DrawCircle(int32(b.centerX), int32(b.centerY), b.radius, rl.Maroon)
-	fmt.Printf("ball.radius = %f\n", b.radius)
 }
 
 //func NewBall(centerX int32, centerY int32, rad float32, col rl.Color) *Ball {
 //	return &Ball{centerX: centerX, centerY: centerY, radius: rad, col: rl.Red}
 //}
 
-type Paddle struct {
+type Ground struct {
 	posX, posY int32
 	height     int32
 	width      int32
 	color      rl.Color
 }
 
-func (p *Paddle) draw() {
+func (p *Ground) draw() {
 	rl.DrawRectangle(p.posX, p.posY, p.width, p.height, rl.White)
 }
-func (p *Paddle) update() {
+func (p *Ground) update() {
 
 }
 
-func NewPaddle(height int32, col rl.Color, width int32) *Paddle {
-	return &Paddle{height: height, width: width, color: col}
+func NewPaddle(height int32, col rl.Color, width int32) *Ground {
+	return &Ground{height: height, width: width, color: col}
 }
