@@ -22,7 +22,7 @@ func main() {
 		gameOver:     false,
 		windowWidth:  800,
 		windowHeight: 600,
-		ball:         Ball{centerX: int32(400), centerY: int32(300), radius: 15},
+		player:       Player{centerX: int32(400), centerY: int32(300), radius: 15},
 		pad: Paddle{
 			posX:   300,
 			posY:   550,
@@ -56,7 +56,7 @@ func main() {
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Black)
 		game.board.draw()
-		game.ball.draw()
+		game.player.draw()
 		game.pad.draw()
 
 		for i := 0; i <= n; i++ {
@@ -68,7 +68,7 @@ func main() {
 		rl.EndDrawing()
 		//update entities
 		game.update()
-		game.ball.update(0.1)
+		game.player.update(0.1)
 		//destroy the entities.
 	}
 }
@@ -78,7 +78,7 @@ type Game struct {
 	gameOver     bool
 	windowWidth  int32
 	windowHeight int32
-	ball         Ball
+	player       Player
 	pad          Paddle
 	brick        Brick
 	board        Score
@@ -112,16 +112,16 @@ func NewGame(g *Game) {
 }
 
 func (g *Game) init() {
-	g.ball.velocityY = 100
-	g.ball.velocityX = 60
-	g.ball.radius = 5
-	g.ball.centerX = 400
-	g.ball.centerY = 300
+	g.player.velocityY = 100
+	g.player.velocityX = 60
+	g.player.radius = 5
+	g.player.centerX = 400
+	g.player.centerY = 300
 	g.board.current = 0
 }
 
-// Ball draw the Circle
-type Ball struct {
+// Player draw the Circle
+type Player struct {
 	velocityY float32
 	velocityX float32
 	centerX   int32
@@ -134,24 +134,24 @@ func (g *Game) update() {
 
 	//here I am trying to find the edge of the ball.
 	//Collision for the bottom wall/screen
-	if g.ball.centerY-int32(g.ball.radius) >= g.windowHeight {
+	if g.player.centerY-int32(g.player.radius) >= g.windowHeight {
 		//reverse the ball velocity
-		g.ball.velocityY *= -1
+		g.player.velocityY *= -1
 	}
 	//collision for the top wall
-	if g.ball.centerY-int32(g.ball.radius) <= 0 {
-		g.ball.velocityY *= -1
+	if g.player.centerY-int32(g.player.radius) <= 0 {
+		g.player.velocityY *= -1
 	}
 
 	//right wall
-	if g.ball.centerX-int32(g.ball.radius) >= g.windowWidth {
-		g.ball.velocityX *= -1
+	if g.player.centerX-int32(g.player.radius) >= g.windowWidth {
+		g.player.velocityX *= -1
 	}
-	if g.ball.centerX-int32(g.ball.radius) <= 0 {
-		g.ball.velocityX *= -1
+	if g.player.centerX-int32(g.player.radius) <= 0 {
+		g.player.velocityX *= -1
 	}
 
-	ballCenter := rl.Vector2{X: float32(g.ball.centerX), Y: float32(g.ball.centerY)}
+	ballCenter := rl.Vector2{X: float32(g.player.centerX), Y: float32(g.player.centerY)}
 	paddleRec := rl.Rectangle{
 		X:      float32(g.pad.posX),
 		Y:      float32(g.pad.posY),
@@ -159,12 +159,12 @@ func (g *Game) update() {
 		Height: float32(g.pad.height),
 	}
 
-	if rl.CheckCollisionCircleRec(ballCenter, g.ball.radius, paddleRec) {
+	if rl.CheckCollisionCircleRec(ballCenter, g.player.radius, paddleRec) {
 		// Collision detected! Reverse ball direction
-		g.ball.velocityY *= -1
+		g.player.velocityY *= -1
 		// Calculate where on the paddle the ball hit (0 = left edge, 1 = right edge)
 		paddleCenter := g.pad.posX + g.pad.width/2
-		hitPosition := float32(g.ball.centerX-paddleCenter) / float32(g.pad.width/2)
+		hitPosition := float32(g.player.centerX-paddleCenter) / float32(g.pad.width/2)
 
 		// Clamp to [-1, 1] range
 		if hitPosition < -1 {
@@ -176,7 +176,7 @@ func (g *Game) update() {
 
 		// Set horizontal velocity based on hit position
 		// Multiply by a factor to control the maximum angle (e.g., 200)
-		g.ball.velocityX = hitPosition * 200
+		g.player.velocityX = hitPosition * 200
 		g.board.current += 1
 	}
 
@@ -190,12 +190,12 @@ func (g *Game) update() {
 
 }
 
-func (b *Ball) update(dt float32) {
+func (b *Player) update(dt float32) {
 	b.centerY += int32(b.velocityY * dt) //convert the result to int32
 	b.centerX += int32(b.velocityX * dt)
 	fmt.Printf("dt is %f and %f velocity.\n", dt, b.velocityY)
 }
-func (b *Ball) draw() {
+func (b *Player) draw() {
 	rl.DrawCircle(int32(b.centerX), int32(b.centerY), b.radius, rl.Maroon)
 	fmt.Printf("ball.radius = %f\n", b.radius)
 }
