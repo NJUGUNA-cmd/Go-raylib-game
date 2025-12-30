@@ -23,11 +23,11 @@ func main() {
 		windowWidth:  800,
 		windowHeight: 600,
 		player:       Player{centerX: int32(400), centerY: int32(300), radius: 15},
-		pad: Ground{
-			posX:   300,
+		ground: Ground{
+			posX:   0,
 			posY:   550,
 			height: 20,
-			width:  100,
+			width:  800,
 			color:  rl.Color{},
 		},
 		brick: Enemy{
@@ -40,6 +40,7 @@ func main() {
 			current: 0,
 		},
 	}
+
 	//Create game entities
 	NewGame(&game)
 
@@ -57,7 +58,7 @@ func main() {
 		rl.ClearBackground(rl.Black)
 		game.board.draw()
 		game.player.draw()
-		game.pad.draw()
+		game.ground.draw()
 
 		for i := 0; i <= n; i++ {
 			//in the draw function we need to increment the x and y axes
@@ -67,8 +68,9 @@ func main() {
 		}
 		rl.EndDrawing()
 		//update entities
-		game.update()
 		game.player.update(0.1)
+		game.update()
+
 		//destroy the entities.
 	}
 }
@@ -79,7 +81,7 @@ type Game struct {
 	windowWidth  int32
 	windowHeight int32
 	player       Player
-	pad          Ground
+	ground       Ground
 	brick        Enemy
 	board        Score
 }
@@ -88,9 +90,9 @@ type Score struct {
 }
 
 func (s *Score) draw() {
-	rl.DrawText("SCORE:", 20, 20, 30, rl.Maroon)
+	rl.DrawText("SCORE:", 20, 20, 20, rl.Maroon)
 	scoreText := fmt.Sprintf("%d", s.current) // Convert int32 to string
-	rl.DrawText(scoreText, 20, 60, 20, rl.White)
+	rl.DrawText(scoreText, 100, 20, 20, rl.White)
 }
 
 type Enemy struct {
@@ -101,7 +103,6 @@ type Enemy struct {
 func (b *Enemy) draw() {
 	//draw multiple bricks
 	//call this function multiple times while spacing the bricks by x amount in both axes
-
 	rl.DrawRectangle(b.posX, b.posY, b.width, b.height, rl.Blue)
 }
 
@@ -112,7 +113,8 @@ func NewGame(g *Game) {
 
 func (g *Game) init() {
 	g.player.velocityY = 100
-	g.player.velocityX = 60
+	g.player.gravity = 1200
+	g.player.velocityX = 0
 	g.player.radius = 5
 	g.player.centerX = 400
 	g.player.centerY = 300
@@ -121,76 +123,48 @@ func (g *Game) init() {
 
 // Player draw the Circle
 type Player struct {
-	velocityY float32
-	velocityX float32
-	centerX   int32
-	centerY   int32
-	radius    float32
-	col       color.RGBA
+	velocityY  float32
+	velocityX  float32
+	centerX    int32
+	centerY    int32
+	radius     float32
+	gravity    int32
+	isGrounded bool
+	col        color.RGBA
 }
 
 func (g *Game) update() {
+	playerBottom := float32(g.player.centerY) + g.player.radius
 
-	//here I am trying to find the edge of the ball.
-	//Collision for the bottom wall/screen
-	if g.player.centerY-int32(g.player.radius) >= g.windowHeight {
-		//reverse the ball velocity
-		g.player.velocityY *= -1
-	}
-	//collision for the top wall
-	if g.player.centerY-int32(g.player.radius) <= 0 {
-		g.player.velocityY *= -1
-	}
+	// Check if player is colliding with ground
+	if playerBottom >= float32(g.ground.posY) &&
+		float32(g.player.centerX) >= float32(g.ground.posX) &&
+		float32(g.player.centerX) <= float32(g.ground.posX)+float32(g.ground.width) {
 
-	//right wall
-	if g.player.centerX-int32(g.player.radius) >= g.windowWidth {
-		g.player.velocityX *= -1
-	}
-	if g.player.centerX-int32(g.player.radius) <= 0 {
-		g.player.velocityX *= -1
-	}
-
-	ballCenter := rl.Vector2{X: float32(g.player.centerX), Y: float32(g.player.centerY)}
-	paddleRec := rl.Rectangle{
-		X:      float32(g.pad.posX),
-		Y:      float32(g.pad.posY),
-		Width:  float32(g.pad.width),
-		Height: float32(g.pad.height),
-	}
-
-	if rl.CheckCollisionCircleRec(ballCenter, g.player.radius, paddleRec) {
-		// Collision detected! Reverse ball direction
-		g.player.velocityY *= -1
-		// Calculate where on the paddle the ball hit (0 = left edge, 1 = right edge)
-		paddleCenter := g.pad.posX + g.pad.width/2
-		hitPosition := float32(g.player.centerX-paddleCenter) / float32(g.pad.width/2)
-
-		// Clamp to [-1, 1] range
-		if hitPosition < -1 {
-			hitPosition = -1
-		}
-		if hitPosition > 1 {
-			hitPosition = 1
-		}
-
-		// Set horizontal velocity based on hit position
-		// Multiply by a factor to control the maximum angle (e.g., 200)
-		g.player.velocityX = hitPosition * 200
-		g.board.current += 1
+		// snap player onto ground
+		g.player.centerY = int32(float32(g.ground.posY) - g.player.radius)
+		g.player.velocityY = 0
+		g.player.isGrounded = true
+	} else {
+		g.player.isGrounded = false
 	}
 
 	//movement
-	if rl.IsKeyDown(rl.KeyLeft) {
-		g.pad.posX -= 10
-	}
-	if rl.IsKeyDown(rl.KeyRight) {
-		g.pad.posX += 10
-	}
+	if g.player.isGrounded && rl.IsKeyPressed(rl.KeySpace) {
+		g.player.velocityY = -500
 
+		g.player.isGrounded = false
+	}
+	if g.player.isGrounded && rl.IsKeyPressed(rl.KeyRight) {
+		g.player.velocityX = +10
+		g.player.centerX = +1
+	}
 }
 
 func (b *Player) update(dt float32) {
-	b.centerY += int32(b.velocityY * dt) //convert the result to int32
+
+	b.velocityY += float32(b.gravity) * dt //apply velocity every frame
+	b.centerY += int32(b.velocityY * dt)   //convert the result to int32
 	b.centerX += int32(b.velocityX * dt)
 }
 func (b *Player) draw() {
@@ -215,6 +189,6 @@ func (p *Ground) update() {
 
 }
 
-func NewPaddle(height int32, col rl.Color, width int32) *Ground {
-	return &Ground{height: height, width: width, color: col}
-}
+// func NewPaddle(height int32, col rl.Color, width int32) *Ground {
+// return &Ground{height: height, width: width, color: col}
+// }

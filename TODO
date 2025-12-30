@@ -3,3 +3,4 @@ Making contra from arachnoid
     ball-player
     pad-ground
     brik- enemies
+2. remove the wall bounce logic on the player
