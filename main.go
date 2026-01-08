@@ -332,7 +332,11 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 	offset := currentTime * t.scrollSpeed
 	playerX := float32(windowWidth) / 3
 
-	// Draw waveform terrain
+	// Pulsing animation for beats
+	pulse := float32(math.Sin(float64(rl.GetTime() * 5)))
+	pulseIntensity := (pulse + 1) / 2 // 0 to 1
+
+	// First pass: Draw base waveform
 	for i := 0; i < len(t.points)-1; i++ {
 		p1 := t.points[i]
 		p2 := t.points[i+1]
@@ -344,7 +348,7 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 
 		// Only draw if on screen
 		if x2 >= -50 && x1 <= float32(windowWidth)+50 {
-			// Draw terrain line with intensity based on amplitude
+			// Base terrain line with intensity based on amplitude
 			intensity := uint8(p1.Amplitude * 255)
 			if intensity < 100 {
 				intensity = 100
@@ -357,34 +361,102 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 				2.0,
 				lineColor,
 			)
+		}
+	}
 
-			// Highlight detected beats
-			if p1.IsBeat {
-				// Pulsing beat marker
-				pulse := float32(math.Sin(float64(rl.GetTime()*4))) * 3
-				beatRadius := 10.0 + pulse
+	// Second pass: Draw beat glow segments (outer glow layer)
+	for i := 0; i < len(t.points)-1; i++ {
+		p1 := t.points[i]
 
-				// Beat circle
-				rl.DrawCircle(int32(x1), int32(y1), beatRadius, rl.Red)
-				rl.DrawCircle(int32(x1), int32(y1), beatRadius-3, rl.Yellow)
+		if !p1.IsBeat {
+			continue
+		}
 
-				// Timing window gate
-				gateHeight := float32(80)
-				gateWidth := float32(40)
+		x1 := playerX + (p1.X - offset)
 
-				// Window based on proximity
-				windowColor := rl.Yellow
-				windowColor.A = 180
+		// Only draw if on screen
+		if x1 < -50 || x1 > float32(windowWidth)+50 {
+			continue
+		}
 
-				rl.DrawRectangleLines(
-					int32(x1-gateWidth/2),
-					int32(y1-gateHeight/2),
-					int32(gateWidth),
-					int32(gateHeight),
-					windowColor,
+		// Draw glowing waveform segment around beat
+		glowRadius := 15 // points on each side to glow
+
+		for j := -glowRadius; j <= glowRadius; j++ {
+			idx := i + j
+			if idx < 0 || idx >= len(t.points)-1 {
+				continue
+			}
+
+			p := t.points[idx]
+			pNext := t.points[idx+1]
+
+			x := playerX + (p.X - offset)
+			y := p.Y
+			xNext := playerX + (pNext.X - offset)
+			yNext := pNext.Y
+
+			// Calculate fade based on distance from beat center
+			distFromBeat := float32(math.Abs(float64(j))) / float32(glowRadius)
+			fade := 1.0 - distFromBeat
+
+			// Three-layer glow effect
+
+			// Outer glow (orange)
+			outerAlpha := uint8(fade * 200 * (0.7 + pulseIntensity*0.3))
+			outerColor := rl.Color{R: 255, G: 140, B: 0, A: outerAlpha}
+			rl.DrawLineEx(
+				rl.Vector2{X: x, Y: y},
+				rl.Vector2{X: xNext, Y: yNext},
+				6.0,
+				outerColor,
+			)
+
+			// Inner bright layer (yellow)
+			if fade > 0.3 {
+				innerAlpha := uint8(fade * 255 * (0.6 + pulseIntensity*0.4))
+				innerColor := rl.Color{R: 255, G: 220, B: 0, A: innerAlpha}
+				rl.DrawLineEx(
+					rl.Vector2{X: x, Y: y},
+					rl.Vector2{X: xNext, Y: yNext},
+					4.0,
+					innerColor,
+				)
+			}
+
+			// Core white highlight (center of beat)
+			if fade > 0.7 {
+				coreAlpha := uint8(fade * 255 * (0.5 + pulseIntensity*0.5))
+				coreColor := rl.Color{R: 255, G: 255, B: 255, A: coreAlpha}
+				rl.DrawLineEx(
+					rl.Vector2{X: x, Y: y},
+					rl.Vector2{X: xNext, Y: yNext},
+					2.5,
+					coreColor,
 				)
 			}
 		}
+	}
+
+	// Third pass: Draw small beat markers at exact beat points
+	for i := 0; i < len(t.points)-1; i++ {
+		p1 := t.points[i]
+
+		if !p1.IsBeat {
+			continue
+		}
+
+		x1 := playerX + (p1.X - offset)
+
+		// Only draw if on screen
+		if x1 < -50 || x1 > float32(windowWidth)+50 {
+			continue
+		}
+
+		// Small pulsing marker at exact beat location
+		markerPulse := 2.0 + pulseIntensity*2.0
+		rl.DrawCircle(int32(x1), int32(p1.Y), markerPulse+2, rl.Orange)
+		rl.DrawCircle(int32(x1), int32(p1.Y), markerPulse, rl.Yellow)
 	}
 
 	// Draw baseline
@@ -505,21 +577,45 @@ func (s *Score) draw(combo int32) {
 }
 
 type Player struct {
-	velocityY  float32
-	velocityX  float32
-	centerX    int32
-	centerY    int32
-	radius     float32
-	gravity    int32
-	isGrounded bool
-	col        color.RGBA
-	canJump    bool
+	velocityY    float32
+	velocityX    float32
+	centerX      int32
+	centerY      int32
+	radius       float32
+	gravity      int32
+	isGrounded   bool
+	col          color.RGBA
+	canJump      bool
+	coyoteTime   float32 // grace period after leaving ground
+	jumpBuffered bool    // jump input buffering
+	bufferTime   float32
 }
 
 func (b *Player) update(dt float32) {
+	// Apply gravity with terminal velocity
+	maxFallSpeed := float32(800)
 	b.velocityY += float32(b.gravity) * dt
+	if b.velocityY > maxFallSpeed {
+		b.velocityY = maxFallSpeed
+	}
+
 	b.centerY += int32(b.velocityY * dt)
 	b.centerX += int32(b.velocityX * dt)
+
+	// Horizontal momentum damping (air friction)
+	if !b.isGrounded {
+		b.velocityX *= 0.98 // slight air resistance
+	} else {
+		b.velocityX *= 0.85 // ground friction
+	}
+
+	// Update timers
+	if b.coyoteTime > 0 {
+		b.coyoteTime -= dt
+	}
+	if b.bufferTime > 0 {
+		b.bufferTime -= dt
+	}
 }
 
 func (b *Player) draw() {
@@ -533,12 +629,15 @@ func NewGame(g *Game) {
 
 func (g *Game) init() {
 	g.player.velocityY = 0
-	g.player.gravity = 1200
+	g.player.gravity = 1800 // Increased for snappier feel
 	g.player.velocityX = 0
 	g.player.radius = 10
 	g.player.centerX = g.windowWidth / 3
 	g.player.centerY = 300
 	g.player.canJump = true
+	g.player.coyoteTime = 0
+	g.player.jumpBuffered = false
+	g.player.bufferTime = 0
 	g.board.current = 0
 	g.combo = 0
 }
@@ -554,17 +653,56 @@ func (g *Game) update(dt float32) {
 	playerBottom := float32(g.player.centerY) + g.player.radius
 
 	// Ground collision
+	wasGrounded := g.player.isGrounded
 	if playerBottom >= terrainHeight {
 		g.player.centerY = int32(terrainHeight - g.player.radius)
 		g.player.velocityY = 0
 		g.player.isGrounded = true
 		g.player.canJump = true
+		g.player.coyoteTime = 0.15 // 150ms grace period after landing
 	} else {
 		g.player.isGrounded = false
+		// Start coyote time when leaving ground
+		if wasGrounded && !g.player.isGrounded {
+			g.player.coyoteTime = 0.15
+		}
 	}
 
-	// Beat-gated jumping
-	if rl.IsKeyPressed(rl.KeySpace) && g.player.canJump {
+	// Horizontal air control (A/D or Left/Right)
+	airControlForce := float32(150)
+	maxHorizontalSpeed := float32(300)
+
+	if rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyLeft) {
+		g.player.velocityX -= airControlForce * dt
+	}
+	if rl.IsKeyDown(rl.KeyD) || rl.IsKeyDown(rl.KeyRight) {
+		g.player.velocityX += airControlForce * dt
+	}
+
+	// Clamp horizontal speed
+	if g.player.velocityX > maxHorizontalSpeed {
+		g.player.velocityX = maxHorizontalSpeed
+	}
+	if g.player.velocityX < -maxHorizontalSpeed {
+		g.player.velocityX = -maxHorizontalSpeed
+	}
+
+	// Jump input buffering - remember jump input for short time
+	if rl.IsKeyPressed(rl.KeySpace) {
+		g.player.jumpBuffered = true
+		g.player.bufferTime = 0.1 // 100ms buffer window
+	}
+
+	// Variable jump height - release space early for shorter jump
+	if rl.IsKeyReleased(rl.KeySpace) && g.player.velocityY < 0 {
+		g.player.velocityY *= 0.5 // Cut jump short
+	}
+
+	// Beat-gated jumping with coyote time and buffering
+	canCoyoteJump := g.player.coyoteTime > 0
+	wantsToJump := g.player.jumpBuffered && g.player.bufferTime > 0
+
+	if wantsToJump && (g.player.canJump || canCoyoteJump) {
 		nearestBeat := g.terrain.GetNearestBeat(currentTime)
 
 		if nearestBeat != nil {
@@ -574,22 +712,38 @@ func (g *Game) update(dt float32) {
 			g.timingText = timing.String()
 			g.timingTimer = 1.0
 
+			// Different jump strengths and horizontal boosts based on timing
 			switch timing {
 			case Perfect:
-				g.player.velocityY = -500
+				g.player.velocityY = -600 // Stronger jump
 				g.combo++
 				g.board.current += 100 * g.combo
+				// Perfect timing gives horizontal momentum boost
+				if rl.IsKeyDown(rl.KeyD) || rl.IsKeyDown(rl.KeyRight) {
+					g.player.velocityX += 100
+				} else if rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyLeft) {
+					g.player.velocityX -= 100
+				}
 			case Good:
-				g.player.velocityY = -375
+				g.player.velocityY = -450
 				g.combo++
 				g.board.current += 50 * g.combo
+				// Good timing gives small boost
+				if rl.IsKeyDown(rl.KeyD) || rl.IsKeyDown(rl.KeyRight) {
+					g.player.velocityX += 50
+				} else if rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyLeft) {
+					g.player.velocityX -= 50
+				}
 			case Miss:
-				g.player.velocityY = -200
+				g.player.velocityY = -250 // Weak jump
 				g.combo = 0
 			}
 
 			g.player.isGrounded = false
 			g.player.canJump = false
+			g.player.coyoteTime = 0
+			g.player.jumpBuffered = false
+			g.player.bufferTime = 0
 		}
 	}
 
@@ -678,7 +832,8 @@ func main() {
 		currentSongTime := game.audio.GetCurrentTime()
 		rl.DrawText(fmt.Sprintf("Beats: %d", len(game.audio.GetBeats())), 20, 80, 20, rl.Gray)
 		rl.DrawText(fmt.Sprintf("Time: %.2fs", currentSongTime), 20, 110, 20, rl.Gray)
-		rl.DrawText("Press SPACE on RED BEATS!", windowWidth/2-150, windowHeight-40, 20, rl.Yellow)
+		rl.DrawText("Press SPACE on GLOWING BEATS!", windowWidth/2-170, windowHeight-60, 20, rl.Yellow)
+		rl.DrawText("A/D or Arrows for air control", windowWidth/2-140, windowHeight-35, 16, rl.Gray)
 
 		// Draw game
 		game.terrain.Draw(currentSongTime, windowWidth)
