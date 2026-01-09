@@ -582,6 +582,7 @@ func (g *Game) init() {
 	g.board.current = 0
 	g.health = 3
 	g.maxHealth = 3
+	g.gameOver = false
 }
 
 func (g *Game) update(dt float32) {
@@ -707,8 +708,16 @@ func main() {
 
 		// Restart on R
 		if game.gameOver && rl.IsKeyPressed(rl.KeyR) {
+			//clear the screen
+
+			rl.StopMusicStream(game.audio.music)
+
 			NewGame(&game)
+
+			rl.PlayMusicStream(game.audio.music)
+			rl.SeekMusicStream(game.audio.music, 0)
 			game.audio.Play()
+
 		}
 
 		// Update
