@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"image/color"
 	"math"
 	"os"
 
@@ -14,7 +13,7 @@ import (
 // ============================================================================
 
 type AudioAnalyzer struct {
-	samples          []float32 // amplitude samples over time
+	samples          []float32
 	beats            []Beat
 	sampleRate       int32
 	samplesPerWindow int
@@ -22,14 +21,12 @@ type AudioAnalyzer struct {
 
 type Beat struct {
 	TimeSeconds float32
-	TimeStamp   float32 // Alias for compatibility
+	TimeStamp   float32
 	Strength    float32
 	Index       int
 }
 
-// NewAudioAnalyzer creates an analyzer and extracts beat data from audio file
 func NewAudioAnalyzer(filepath string) *AudioAnalyzer {
-	// Load audio file
 	wave := rl.LoadWave(filepath)
 	if wave.FrameCount == 0 {
 		fmt.Printf("Error: Could not load audio file: %s\n", filepath)
@@ -43,15 +40,11 @@ func NewAudioAnalyzer(filepath string) *AudioAnalyzer {
 		samples:          []float32{},
 		beats:            []Beat{},
 		sampleRate:       int32(wave.SampleRate),
-		samplesPerWindow: int(wave.SampleRate) / 100, // 10ms windows
+		samplesPerWindow: int(wave.SampleRate) / 100,
 	}
 
-	// Extract amplitude envelope
 	analyzer.extractAmplitudeEnvelope(wave)
-
-	// Detect beats from amplitude
 	analyzer.detectBeats()
-
 	rl.UnloadWave(wave)
 
 	fmt.Printf("Analysis complete: %d samples, %d beats detected\n",
@@ -60,42 +53,29 @@ func NewAudioAnalyzer(filepath string) *AudioAnalyzer {
 	return analyzer
 }
 
-// extractAmplitudeEnvelope samples the audio amplitude every 10ms
 func (aa *AudioAnalyzer) extractAmplitudeEnvelope(wave rl.Wave) {
 	data := rl.LoadWaveSamples(wave)
 	defer rl.UnloadWaveSamples(data)
 
-	// CRITICAL FIX: FrameCount is the number of frames, not samples
-	// Each frame has multiple channels, so total samples = frames * channels
 	totalFrames := int(wave.FrameCount)
 	channels := int(wave.Channels)
 	windowSizeInFrames := aa.samplesPerWindow
 
-	fmt.Printf("Processing: %d frames, %d channels, window=%d frames\n",
-		totalFrames, channels, windowSizeInFrames)
-
-	// Process audio in windows (working with frames, not samples)
 	for frameIdx := 0; frameIdx < totalFrames; frameIdx += windowSizeInFrames {
 		endFrame := frameIdx + windowSizeInFrames
 		if endFrame > totalFrames {
 			endFrame = totalFrames
 		}
 
-		// Calculate RMS (Root Mean Square) for this window
 		sumSquares := float32(0)
 		count := 0
 
-		// For each frame in the window
 		for f := frameIdx; f < endFrame; f++ {
-			// For each channel in the frame
 			for ch := 0; ch < channels; ch++ {
 				sampleIdx := f*channels + ch
-
-				// Bounds check
 				if sampleIdx >= len(data) {
 					break
 				}
-
 				sample := data[sampleIdx]
 				sumSquares += sample * sample
 				count++
@@ -106,49 +86,40 @@ func (aa *AudioAnalyzer) extractAmplitudeEnvelope(wave rl.Wave) {
 		if count > 0 {
 			rms = float32(math.Sqrt(float64(sumSquares / float32(count))))
 		}
-
 		aa.samples = append(aa.samples, rms)
 	}
-
-	fmt.Printf("Generated %d amplitude samples\n", len(aa.samples))
 }
 
-// detectBeats finds peaks in amplitude (onset detection)
 func (aa *AudioAnalyzer) detectBeats() {
 	if len(aa.samples) < 3 {
 		return
 	}
 
-	// Calculate dynamic threshold
 	avgAmplitude := float32(0)
 	for _, amp := range aa.samples {
 		avgAmplitude += amp
 	}
 	avgAmplitude /= float32(len(aa.samples))
 
-	threshold := avgAmplitude * 1.5 // 1.5x average
-	minBeatGap := 10                // minimum 10 windows (~100ms) between beats
-
+	threshold := avgAmplitude * 1.5
+	minBeatGap := 10
 	beatIndex := 0
 	lastBeatIdx := -minBeatGap
 
-	// Find local maxima that exceed threshold
 	for i := 1; i < len(aa.samples)-1; i++ {
 		current := aa.samples[i]
 		prev := aa.samples[i-1]
 		next := aa.samples[i+1]
 
-		// Is this a peak?
 		isPeak := current > prev && current > next
 
-		// Is it strong enough and far enough from last beat?
 		if isPeak && current > threshold && (i-lastBeatIdx) >= minBeatGap {
-			timeSeconds := float32(i) * 0.01 // 10ms per sample
+			timeSeconds := float32(i) * 0.01
 
 			aa.beats = append(aa.beats, Beat{
 				TimeSeconds: timeSeconds,
-				TimeStamp:   timeSeconds,            // Set both fields
-				Strength:    current / avgAmplitude, // normalized strength
+				TimeStamp:   timeSeconds,
+				Strength:    current / avgAmplitude,
 				Index:       beatIndex,
 			})
 
@@ -157,9 +128,7 @@ func (aa *AudioAnalyzer) detectBeats() {
 		}
 	}
 
-	// If very few beats detected, lower threshold and try again
 	if len(aa.beats) < 10 {
-		fmt.Println("Low beat count, retrying with lower threshold...")
 		aa.beats = []Beat{}
 		threshold = avgAmplitude * 1.2
 		lastBeatIdx = -minBeatGap
@@ -169,19 +138,16 @@ func (aa *AudioAnalyzer) detectBeats() {
 			current := aa.samples[i]
 			prev := aa.samples[i-1]
 			next := aa.samples[i+1]
-
 			isPeak := current > prev && current > next
 
 			if isPeak && current > threshold && (i-lastBeatIdx) >= minBeatGap {
 				timeSeconds := float32(i) * 0.01
-
 				aa.beats = append(aa.beats, Beat{
 					TimeSeconds: timeSeconds,
-					TimeStamp:   timeSeconds, // Set both fields
+					TimeStamp:   timeSeconds,
 					Strength:    current / avgAmplitude,
 					Index:       beatIndex,
 				})
-
 				lastBeatIdx = i
 				beatIndex++
 			}
@@ -189,7 +155,6 @@ func (aa *AudioAnalyzer) detectBeats() {
 	}
 }
 
-// GetAmplitudeAtTime returns the amplitude at a specific time
 func (aa *AudioAnalyzer) GetAmplitudeAtTime(timeSeconds float32) float32 {
 	idx := int(timeSeconds / 0.01)
 	if idx < 0 || idx >= len(aa.samples) {
@@ -199,7 +164,7 @@ func (aa *AudioAnalyzer) GetAmplitudeAtTime(timeSeconds float32) float32 {
 }
 
 // ============================================================================
-// AUDIO PLAYBACK SYSTEM
+// AUDIO SYSTEM
 // ============================================================================
 
 type AudioSystem struct {
@@ -209,11 +174,7 @@ type AudioSystem struct {
 
 func NewAudioSystem(filepath string) *AudioSystem {
 	rl.InitAudioDevice()
-
-	// Analyze the audio file first
 	analyzer := NewAudioAnalyzer(filepath)
-
-	// Load for playback
 	music := rl.LoadMusicStream(filepath)
 
 	return &AudioSystem{
@@ -244,6 +205,19 @@ func (as *AudioSystem) Close() {
 }
 
 // ============================================================================
+// OBSTACLE SYSTEM
+// ============================================================================
+
+type Obstacle struct {
+	X         float32
+	Height    float32 // How high the red bar extends upward
+	TimeStamp float32
+	BeatIndex int
+	IsIntense bool
+	BottomY   float32 // Base position on waveform
+}
+
+// ============================================================================
 // TERRAIN SYSTEM
 // ============================================================================
 
@@ -251,13 +225,12 @@ type TerrainPoint struct {
 	X         float32
 	Y         float32
 	TimeStamp float32
-	IsBeat    bool
-	BeatIndex int
 	Amplitude float32
 }
 
 type Terrain struct {
 	points      []TerrainPoint
+	obstacles   []Obstacle
 	scrollSpeed float32
 	baseY       float32
 	maxHeight   float32
@@ -268,6 +241,7 @@ type Terrain struct {
 func NewTerrain(audioSys *AudioSystem, windowHeight int32) *Terrain {
 	terrain := &Terrain{
 		points:      []TerrainPoint{},
+		obstacles:   []Obstacle{},
 		scrollSpeed: 200.0,
 		baseY:       float32(windowHeight) - 150,
 		maxHeight:   150.0,
@@ -275,8 +249,8 @@ func NewTerrain(audioSys *AudioSystem, windowHeight int32) *Terrain {
 		analyzer:    audioSys.analyzer,
 	}
 
-	// Generate terrain from actual waveform + detected beats
 	terrain.GenerateFromWaveform()
+	terrain.GenerateObstacles(audioSys.GetBeats())
 
 	return terrain
 }
@@ -284,16 +258,13 @@ func NewTerrain(audioSys *AudioSystem, windowHeight int32) *Terrain {
 func (t *Terrain) GenerateFromWaveform() {
 	t.points = []TerrainPoint{}
 
-	// Create terrain points from amplitude samples
 	for i, amplitude := range t.analyzer.samples {
 		timeSeconds := float32(i) * 0.01
 		xPos := timeSeconds * t.scrollSpeed
 
-		// Map amplitude to height (with some scaling)
 		heightRange := t.maxHeight - t.minHeight
-		height := t.minHeight + (amplitude * heightRange * 300) // 300 = scale factor
+		height := t.minHeight + (amplitude * heightRange * 300)
 
-		// Clamp height
 		if height > t.maxHeight {
 			height = t.maxHeight
 		}
@@ -305,23 +276,62 @@ func (t *Terrain) GenerateFromWaveform() {
 			X:         xPos,
 			Y:         t.baseY - height,
 			TimeStamp: timeSeconds,
-			IsBeat:    false,
-			BeatIndex: -1,
 			Amplitude: amplitude,
 		}
 
 		t.points = append(t.points, point)
 	}
+}
 
-	// Mark beat points
-	for _, beat := range t.analyzer.beats {
-		// Find closest terrain point to this beat
-		beatIdx := int(beat.TimeSeconds / 0.01)
-		if beatIdx >= 0 && beatIdx < len(t.points) {
-			t.points[beatIdx].IsBeat = true
-			t.points[beatIdx].BeatIndex = beat.Index
+// GenerateObstacles creates red bars at beats with intensity pattern
+func (t *Terrain) GenerateObstacles(beats []Beat) {
+	t.obstacles = []Obstacle{}
+
+	// Intensity pattern: 8 calm, 16 intense, 8 calm (repeating)
+	patternLength := 32
+	calmDuration := 8
+	intenseDuration := 16
+
+	for _, beat := range beats {
+		// Determine if this beat should have an obstacle
+		positionInPattern := beat.Index % patternLength
+
+		isIntense := false
+		if positionInPattern >= calmDuration && positionInPattern < (calmDuration+intenseDuration) {
+			isIntense = true
 		}
+
+		// During calm sections, only spawn obstacles occasionally (30% chance)
+		if !isIntense && (beat.Index%10) < 7 {
+			continue // Skip this beat
+		}
+
+		// Get terrain height at this beat position
+		terrainY := t.GetHeightAtTime(beat.TimeSeconds)
+
+		// Obstacle height varies based on intensity and beat strength
+		baseHeight := float32(60)
+		if isIntense {
+			// Intense sections have taller obstacles
+			baseHeight = 60 + (beat.Strength * 40) // 60-100 height
+		} else {
+			// Calm sections have shorter obstacles
+			baseHeight = 40 + (beat.Strength * 20) // 40-60 height
+		}
+
+		obstacle := Obstacle{
+			X:         beat.TimeSeconds * t.scrollSpeed,
+			Height:    baseHeight,
+			TimeStamp: beat.TimeSeconds,
+			BeatIndex: beat.Index,
+			IsIntense: isIntense,
+			BottomY:   terrainY,
+		}
+
+		t.obstacles = append(t.obstacles, obstacle)
 	}
+
+	fmt.Printf("Generated %d obstacles from %d beats\n", len(t.obstacles), len(beats))
 }
 
 func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
@@ -332,11 +342,7 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 	offset := currentTime * t.scrollSpeed
 	playerX := float32(windowWidth) / 3
 
-	// Pulsing animation for beats
-	pulse := float32(math.Sin(float64(rl.GetTime() * 5)))
-	pulseIntensity := (pulse + 1) / 2 // 0 to 1
-
-	// First pass: Draw base waveform
+	// Draw waveform (blue wavy line)
 	for i := 0; i < len(t.points)-1; i++ {
 		p1 := t.points[i]
 		p2 := t.points[i+1]
@@ -346,117 +352,63 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 		x2 := playerX + (p2.X - offset)
 		y2 := p2.Y
 
-		// Only draw if on screen
 		if x2 >= -50 && x1 <= float32(windowWidth)+50 {
-			// Base terrain line with intensity based on amplitude
-			intensity := uint8(p1.Amplitude * 255)
-			if intensity < 100 {
-				intensity = 100
-			}
-			lineColor := rl.Color{R: intensity, G: intensity, B: intensity, A: 255}
-
+			// Blue waveform
 			rl.DrawLineEx(
 				rl.Vector2{X: x1, Y: y1},
 				rl.Vector2{X: x2, Y: y2},
-				2.0,
-				lineColor,
+				3.0,
+				rl.SkyBlue,
 			)
 		}
 	}
 
-	// Second pass: Draw beat glow segments (outer glow layer)
-	for i := 0; i < len(t.points)-1; i++ {
-		p1 := t.points[i]
+	// Draw obstacles (red bars)
+	for _, obs := range t.obstacles {
+		x := playerX + (obs.X - offset)
 
-		if !p1.IsBeat {
+		if x < -50 || x > float32(windowWidth)+50 {
 			continue
 		}
 
-		x1 := playerX + (p1.X - offset)
+		// Red bar extends upward from terrain
+		barWidth := float32(15)
+		topY := obs.BottomY - obs.Height
 
-		// Only draw if on screen
-		if x1 < -50 || x1 > float32(windowWidth)+50 {
-			continue
-		}
-
-		// Draw glowing waveform segment around beat
-		glowRadius := 15 // points on each side to glow
-
-		for j := -glowRadius; j <= glowRadius; j++ {
-			idx := i + j
-			if idx < 0 || idx >= len(t.points)-1 {
-				continue
-			}
-
-			p := t.points[idx]
-			pNext := t.points[idx+1]
-
-			x := playerX + (p.X - offset)
-			y := p.Y
-			xNext := playerX + (pNext.X - offset)
-			yNext := pNext.Y
-
-			// Calculate fade based on distance from beat center
-			distFromBeat := float32(math.Abs(float64(j))) / float32(glowRadius)
-			fade := 1.0 - distFromBeat
-
-			// Three-layer glow effect
-
-			// Outer glow (orange)
-			outerAlpha := uint8(fade * 200 * (0.7 + pulseIntensity*0.3))
-			outerColor := rl.Color{R: 255, G: 140, B: 0, A: outerAlpha}
-			rl.DrawLineEx(
-				rl.Vector2{X: x, Y: y},
-				rl.Vector2{X: xNext, Y: yNext},
-				6.0,
-				outerColor,
+		// Draw obstacle with glow effect
+		if obs.IsIntense {
+			// Intense obstacles glow more
+			rl.DrawRectangle(
+				int32(x-barWidth/2-3),
+				int32(topY-3),
+				int32(barWidth+6),
+				int32(obs.Height+6),
+				rl.Color{R: 100, G: 0, B: 0, A: 100},
 			)
-
-			// Inner bright layer (yellow)
-			if fade > 0.3 {
-				innerAlpha := uint8(fade * 255 * (0.6 + pulseIntensity*0.4))
-				innerColor := rl.Color{R: 255, G: 220, B: 0, A: innerAlpha}
-				rl.DrawLineEx(
-					rl.Vector2{X: x, Y: y},
-					rl.Vector2{X: xNext, Y: yNext},
-					4.0,
-					innerColor,
-				)
-			}
-
-			// Core white highlight (center of beat)
-			if fade > 0.7 {
-				coreAlpha := uint8(fade * 255 * (0.5 + pulseIntensity*0.5))
-				coreColor := rl.Color{R: 255, G: 255, B: 255, A: coreAlpha}
-				rl.DrawLineEx(
-					rl.Vector2{X: x, Y: y},
-					rl.Vector2{X: xNext, Y: yNext},
-					2.5,
-					coreColor,
-				)
-			}
-		}
-	}
-
-	// Third pass: Draw small beat markers at exact beat points
-	for i := 0; i < len(t.points)-1; i++ {
-		p1 := t.points[i]
-
-		if !p1.IsBeat {
-			continue
 		}
 
-		x1 := playerX + (p1.X - offset)
-
-		// Only draw if on screen
-		if x1 < -50 || x1 > float32(windowWidth)+50 {
-			continue
+		// Main red bar
+		obstacleColor := rl.Red
+		if obs.IsIntense {
+			obstacleColor = rl.Color{R: 255, G: 50, B: 50, A: 255}
 		}
 
-		// Small pulsing marker at exact beat location
-		markerPulse := 2.0 + pulseIntensity*2.0
-		rl.DrawCircle(int32(x1), int32(p1.Y), markerPulse+2, rl.Orange)
-		rl.DrawCircle(int32(x1), int32(p1.Y), markerPulse, rl.Yellow)
+		rl.DrawRectangle(
+			int32(x-barWidth/2),
+			int32(topY),
+			int32(barWidth),
+			int32(obs.Height),
+			obstacleColor,
+		)
+
+		// Highlight top edge
+		rl.DrawRectangle(
+			int32(x-barWidth/2),
+			int32(topY),
+			int32(barWidth),
+			3,
+			rl.Color{R: 255, G: 150, B: 150, A: 255},
+		)
 	}
 
 	// Draw baseline
@@ -473,68 +425,36 @@ func (t *Terrain) GetHeightAtTime(currentTime float32) float32 {
 		return t.baseY
 	}
 
-	// Interpolate between points for smooth collision
 	if idx < len(t.points)-1 {
 		p1 := t.points[idx]
 		p2 := t.points[idx+1]
 
-		t := (currentTime - p1.TimeStamp) / (p2.TimeStamp - p1.TimeStamp)
-		return p1.Y + (p2.Y-p1.Y)*t
+		interpolation := (currentTime - p1.TimeStamp) / (p2.TimeStamp - p1.TimeStamp)
+		return p1.Y + (p2.Y-p1.Y)*interpolation
 	}
 
 	return t.points[idx].Y
 }
 
-func (t *Terrain) GetNearestBeat(currentTime float32) *Beat {
-	var nearest *Beat
-	minDist := float32(math.MaxFloat32)
+// CheckObstacleCollision checks if player hits any obstacle
+func (t *Terrain) CheckObstacleCollision(currentTime float32, playerX, playerY, playerRadius float32, offset float32, windowWidth int32) bool {
+	playerScreenX := float32(windowWidth) / 3
 
-	for i := range t.analyzer.beats {
-		beat := &t.analyzer.beats[i]
-		dist := float32(math.Abs(float64(beat.TimeSeconds - currentTime)))
-		if dist < minDist {
-			minDist = dist
-			nearest = beat
+	for _, obs := range t.obstacles {
+		obsScreenX := playerScreenX + (obs.X - offset)
+
+		// Check if obstacle is near player horizontally
+		if math.Abs(float64(obsScreenX-playerX)) < 20 {
+			// Check if player is below the top of the obstacle
+			topY := obs.BottomY - obs.Height
+
+			if playerY+playerRadius > topY && playerY-playerRadius < obs.BottomY {
+				return true // Collision!
+			}
 		}
 	}
 
-	return nearest
-}
-
-// ============================================================================
-// TIMING SYSTEM
-// ============================================================================
-
-type TimingResult int
-
-const (
-	Miss TimingResult = iota
-	Good
-	Perfect
-)
-
-func (tr TimingResult) String() string {
-	switch tr {
-	case Perfect:
-		return "PERFECT"
-	case Good:
-		return "GOOD"
-	case Miss:
-		return "MISS"
-	default:
-		return "MISS"
-	}
-}
-
-func JudgeTiming(actionTime, beatTime float32) TimingResult {
-	delta := float32(math.Abs(float64(actionTime - beatTime)))
-
-	if delta <= 0.040 {
-		return Perfect
-	} else if delta <= 0.080 {
-		return Good
-	}
-	return Miss
+	return false
 }
 
 // ============================================================================
@@ -550,77 +470,100 @@ type Game struct {
 	audio        *AudioSystem
 	terrain      *Terrain
 	board        Score
-	lastTiming   TimingResult
-	timingText   string
-	timingTimer  float32
-	combo        int32
+	health       int32
+	maxHealth    int32
 }
 
 type Score struct {
 	current int32
 }
 
-func (s *Score) draw(combo int32) {
+func (s *Score) draw(health, maxHealth int32) {
 	rl.DrawText("SCORE:", 20, 20, 20, rl.Maroon)
 	scoreText := fmt.Sprintf("%d", s.current)
 	rl.DrawText(scoreText, 110, 20, 20, rl.White)
 
-	rl.DrawText("COMBO:", 20, 50, 20, rl.Maroon)
-	comboText := fmt.Sprintf("%dx", combo)
-	comboColor := rl.White
-	if combo > 10 {
-		comboColor = rl.Gold
-	} else if combo > 5 {
-		comboColor = rl.Yellow
+	// Health bar
+	rl.DrawText("HEALTH:", 20, 50, 20, rl.Maroon)
+	barWidth := int32(200)
+	barHeight := int32(20)
+	healthRatio := float32(health) / float32(maxHealth)
+
+	// Background
+	rl.DrawRectangle(120, 50, barWidth, barHeight, rl.DarkGray)
+
+	// Health fill
+	healthColor := rl.Green
+	if healthRatio < 0.3 {
+		healthColor = rl.Red
+	} else if healthRatio < 0.6 {
+		healthColor = rl.Yellow
 	}
-	rl.DrawText(comboText, 110, 50, 20, comboColor)
+
+	rl.DrawRectangle(120, 50, int32(float32(barWidth)*healthRatio), barHeight, healthColor)
+
+	// Border
+	rl.DrawRectangleLines(120, 50, barWidth, barHeight, rl.White)
 }
 
 type Player struct {
-	velocityY    float32
-	velocityX    float32
-	centerX      int32
-	centerY      int32
-	radius       float32
-	gravity      int32
-	isGrounded   bool
-	col          color.RGBA
-	canJump      bool
-	coyoteTime   float32 // grace period after leaving ground
-	jumpBuffered bool    // jump input buffering
-	bufferTime   float32
+	velocityY  float32
+	velocityX  float32
+	centerX    float32
+	centerY    float32
+	radius     float32
+	gravity    int32
+	isGrounded bool
+	canJump    bool
+	surfSpeed  float32 // Horizontal movement speed on waveform
 }
 
-func (b *Player) update(dt float32) {
-	// Apply gravity with terminal velocity
-	maxFallSpeed := float32(800)
-	b.velocityY += float32(b.gravity) * dt
-	if b.velocityY > maxFallSpeed {
-		b.velocityY = maxFallSpeed
-	}
-
-	b.centerY += int32(b.velocityY * dt)
-	b.centerX += int32(b.velocityX * dt)
-
-	// Horizontal momentum damping (air friction)
-	if !b.isGrounded {
-		b.velocityX *= 0.98 // slight air resistance
+func (p *Player) update(dt float32, terrainHeight float32) {
+	// Surfing on waveform - player sticks to terrain surface
+	if p.isGrounded {
+		p.centerY = terrainHeight - p.radius
+		p.velocityY = 0
 	} else {
-		b.velocityX *= 0.85 // ground friction
+		// In air - apply gravity
+		p.velocityY += float32(p.gravity) * dt
+		p.centerY += p.velocityY * dt
 	}
 
-	// Update timers
-	if b.coyoteTime > 0 {
-		b.coyoteTime -= dt
+	// Horizontal surfing movement (A/D keys)
+	if rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyLeft) {
+		p.centerX -= p.surfSpeed * dt
 	}
-	if b.bufferTime > 0 {
-		b.bufferTime -= dt
+	if rl.IsKeyDown(rl.KeyD) || rl.IsKeyDown(rl.KeyRight) {
+		p.centerX += p.surfSpeed * dt
+	}
+
+	// Keep player on screen horizontally
+	if p.centerX < p.radius {
+		p.centerX = p.radius
+	}
+	if p.centerX > 450 { // Limit to left portion of screen
+		p.centerX = 450
+	}
+
+	// Check if should be grounded
+	playerBottom := p.centerY + p.radius
+	if playerBottom >= terrainHeight {
+		p.isGrounded = true
+		p.canJump = true
+		p.centerY = terrainHeight - p.radius
+		p.velocityY = 0
 	}
 }
 
-func (b *Player) draw() {
-	rl.DrawCircle(int32(b.centerX), int32(b.centerY), b.radius, rl.Maroon)
-	rl.DrawCircle(int32(b.centerX), int32(b.centerY), b.radius/2, rl.White)
+func (p *Player) draw() {
+	rl.DrawCircle(int32(p.centerX), int32(p.centerY), p.radius, rl.Maroon)
+	rl.DrawCircle(int32(p.centerX), int32(p.centerY), p.radius/2, rl.White)
+
+	// Draw surf trail effect when moving
+	if p.isGrounded && (rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyD)) {
+		rl.DrawCircle(int32(p.centerX), int32(p.centerY+p.radius), p.radius/3,
+			rl.Color{R: 135, G: 206, B: 235, A: 150})
+	}
 }
 
 func NewGame(g *Game) {
@@ -629,146 +572,93 @@ func NewGame(g *Game) {
 
 func (g *Game) init() {
 	g.player.velocityY = 0
-	g.player.gravity = 1800 // Increased for snappier feel
+	g.player.gravity = 1500
 	g.player.velocityX = 0
-	g.player.radius = 10
-	g.player.centerX = g.windowWidth / 3
+	g.player.radius = 12
+	g.player.centerX = float32(g.windowWidth) / 3
 	g.player.centerY = 300
 	g.player.canJump = true
-	g.player.coyoteTime = 0
-	g.player.jumpBuffered = false
-	g.player.bufferTime = 0
+	g.player.surfSpeed = 250.0
 	g.board.current = 0
-	g.combo = 0
+	g.health = 3
+	g.maxHealth = 3
 }
 
 func (g *Game) update(dt float32) {
-	if g.paused {
+	if g.paused || g.gameOver {
 		return
 	}
 
 	currentTime := g.audio.GetCurrentTime()
+	offset := currentTime * g.terrain.scrollSpeed
 
 	terrainHeight := g.terrain.GetHeightAtTime(currentTime)
-	playerBottom := float32(g.player.centerY) + g.player.radius
 
-	// Ground collision
-	wasGrounded := g.player.isGrounded
-	if playerBottom >= terrainHeight {
-		g.player.centerY = int32(terrainHeight - g.player.radius)
-		g.player.velocityY = 0
-		g.player.isGrounded = true
-		g.player.canJump = true
-		g.player.coyoteTime = 0.15 // 150ms grace period after landing
-	} else {
+	// Update player
+	g.player.update(dt, terrainHeight)
+
+	// Jump input
+	if rl.IsKeyPressed(rl.KeySpace) && g.player.canJump {
+		g.player.velocityY = -500
 		g.player.isGrounded = false
-		// Start coyote time when leaving ground
-		if wasGrounded && !g.player.isGrounded {
-			g.player.coyoteTime = 0.15
-		}
+		g.player.canJump = false
+		g.board.current += 10
 	}
 
-	// Horizontal air control (A/D or Left/Right)
-	airControlForce := float32(150)
-	maxHorizontalSpeed := float32(300)
-
-	if rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyLeft) {
-		g.player.velocityX -= airControlForce * dt
-	}
-	if rl.IsKeyDown(rl.KeyD) || rl.IsKeyDown(rl.KeyRight) {
-		g.player.velocityX += airControlForce * dt
-	}
-
-	// Clamp horizontal speed
-	if g.player.velocityX > maxHorizontalSpeed {
-		g.player.velocityX = maxHorizontalSpeed
-	}
-	if g.player.velocityX < -maxHorizontalSpeed {
-		g.player.velocityX = -maxHorizontalSpeed
-	}
-
-	// Jump input buffering - remember jump input for short time
-	if rl.IsKeyPressed(rl.KeySpace) {
-		g.player.jumpBuffered = true
-		g.player.bufferTime = 0.1 // 100ms buffer window
-	}
-
-	// Variable jump height - release space early for shorter jump
+	// Variable jump
 	if rl.IsKeyReleased(rl.KeySpace) && g.player.velocityY < 0 {
-		g.player.velocityY *= 0.5 // Cut jump short
+		g.player.velocityY *= 0.5
 	}
 
-	// Beat-gated jumping with coyote time and buffering
-	canCoyoteJump := g.player.coyoteTime > 0
-	wantsToJump := g.player.jumpBuffered && g.player.bufferTime > 0
-
-	if wantsToJump && (g.player.canJump || canCoyoteJump) {
-		nearestBeat := g.terrain.GetNearestBeat(currentTime)
-
-		if nearestBeat != nil {
-			timing := JudgeTiming(currentTime, nearestBeat.TimeStamp)
-
-			g.lastTiming = timing
-			g.timingText = timing.String()
-			g.timingTimer = 1.0
-
-			// Different jump strengths and horizontal boosts based on timing
-			switch timing {
-			case Perfect:
-				g.player.velocityY = -600 // Stronger jump
-				g.combo++
-				g.board.current += 100 * g.combo
-				// Perfect timing gives horizontal momentum boost
-				if rl.IsKeyDown(rl.KeyD) || rl.IsKeyDown(rl.KeyRight) {
-					g.player.velocityX += 100
-				} else if rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyLeft) {
-					g.player.velocityX -= 100
-				}
-			case Good:
-				g.player.velocityY = -450
-				g.combo++
-				g.board.current += 50 * g.combo
-				// Good timing gives small boost
-				if rl.IsKeyDown(rl.KeyD) || rl.IsKeyDown(rl.KeyRight) {
-					g.player.velocityX += 50
-				} else if rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyLeft) {
-					g.player.velocityX -= 50
-				}
-			case Miss:
-				g.player.velocityY = -250 // Weak jump
-				g.combo = 0
-			}
-
-			g.player.isGrounded = false
-			g.player.canJump = false
-			g.player.coyoteTime = 0
-			g.player.jumpBuffered = false
-			g.player.bufferTime = 0
+	// Check obstacle collision
+	if g.terrain.CheckObstacleCollision(
+		currentTime,
+		g.player.centerX,
+		g.player.centerY,
+		g.player.radius,
+		offset,
+		g.windowWidth,
+	) {
+		g.health--
+		if g.health <= 0 {
+			g.gameOver = true
 		}
-	}
-
-	if g.timingTimer > 0 {
-		g.timingTimer -= dt
+		// Brief invincibility after hit (remove nearby obstacles)
+		// This prevents multiple hits from same obstacle
 	}
 }
 
-func (g *Game) drawTimingFeedback() {
-	if g.timingTimer > 0 {
-		col := rl.White
-		switch g.lastTiming {
-		case Perfect:
-			col = rl.Gold
-		case Good:
-			col = rl.Green
-		case Miss:
-			col = rl.Red
-		}
+func (g *Game) drawGameOver() {
+	// Semi-transparent overlay
+	rl.DrawRectangle(0, 0, g.windowWidth, g.windowHeight,
+		rl.Color{R: 0, G: 0, B: 0, A: 180})
 
-		alpha := uint8(g.timingTimer * 255)
-		col.A = alpha
+	// Game Over text
+	gameOverText := "GAME OVER"
+	textWidth := rl.MeasureText(gameOverText, 60)
+	rl.DrawText(gameOverText,
+		(g.windowWidth-textWidth)/2,
+		g.windowHeight/2-50,
+		60,
+		rl.Red)
 
-		rl.DrawText(g.timingText, g.windowWidth/2-50, 200, 40, col)
-	}
+	// Final score
+	scoreText := fmt.Sprintf("Final Score: %d", g.board.current)
+	scoreWidth := rl.MeasureText(scoreText, 30)
+	rl.DrawText(scoreText,
+		(g.windowWidth-scoreWidth)/2,
+		g.windowHeight/2+30,
+		30,
+		rl.White)
+
+	// Restart instruction
+	restartText := "Press R to Restart"
+	restartWidth := rl.MeasureText(restartText, 20)
+	rl.DrawText(restartText,
+		(g.windowWidth-restartWidth)/2,
+		g.windowHeight/2+80,
+		20,
+		rl.Gray)
 }
 
 // ============================================================================
@@ -781,12 +671,11 @@ func main() {
 		windowHeight = 600
 	)
 
-	rl.InitWindow(windowWidth, windowHeight, "Waveform Rhythm Terrain - Real Beat Detection")
+	rl.InitWindow(windowWidth, windowHeight, "Waveform Surfing Rhythm Game")
 	defer rl.CloseWindow()
 	rl.SetTargetFPS(60)
 
-	// CHANGE THIS: Set your audio file path
-	audioFile := "song.wav" // <-- PUT YOUR .WAV OR .OGG FILE HERE
+	audioFile := "song.wav" // <-- YOUR AUDIO FILE
 
 	game := Game{
 		paused:       false,
@@ -799,17 +688,14 @@ func main() {
 
 	NewGame(&game)
 
-	// Initialize audio system with REAL beat detection
 	fmt.Println("Analyzing audio file...")
 	game.audio = NewAudioSystem(audioFile)
 	defer game.audio.Close()
 
-	// Generate terrain from actual waveform
 	game.terrain = NewTerrain(game.audio, windowHeight)
 
-	fmt.Printf("Ready! %d beats detected\n", len(game.audio.GetBeats()))
+	fmt.Printf("Ready! %d obstacles generated\n", len(game.terrain.obstacles))
 
-	// Start music
 	game.audio.Play()
 
 	lastTime := float32(rl.GetTime())
@@ -819,27 +705,40 @@ func main() {
 		dt := currentTime - lastTime
 		lastTime = currentTime
 
+		// Restart on R
+		if game.gameOver && rl.IsKeyPressed(rl.KeyR) {
+			NewGame(&game)
+			game.audio.Play()
+		}
+
 		// Update
 		game.audio.Update()
-		game.player.update(dt)
 		game.update(dt)
 
 		// Draw
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Black)
 
-		// Info
 		currentSongTime := game.audio.GetCurrentTime()
-		rl.DrawText(fmt.Sprintf("Beats: %d", len(game.audio.GetBeats())), 20, 80, 20, rl.Gray)
-		rl.DrawText(fmt.Sprintf("Time: %.2fs", currentSongTime), 20, 110, 20, rl.Gray)
-		rl.DrawText("Press SPACE on GLOWING BEATS!", windowWidth/2-170, windowHeight-60, 20, rl.Yellow)
-		rl.DrawText("A/D or Arrows for air control", windowWidth/2-140, windowHeight-35, 16, rl.Gray)
 
 		// Draw game
 		game.terrain.Draw(currentSongTime, windowWidth)
 		game.player.draw()
-		game.board.draw(game.combo)
-		game.drawTimingFeedback()
+		game.board.draw(game.health, game.maxHealth)
+
+		// Instructions
+		rl.DrawText("SURF: A/D or Arrows", 20, windowHeight-60, 18, rl.SkyBlue)
+		rl.DrawText("JUMP: SPACE (to clear red bars!)", 20, windowHeight-35, 18, rl.Red)
+
+		// Debug info
+		rl.DrawText(fmt.Sprintf("Obstacles: %d", len(game.terrain.obstacles)),
+			windowWidth-200, 20, 16, rl.Gray)
+		rl.DrawText(fmt.Sprintf("Time: %.2fs", currentSongTime),
+			windowWidth-200, 40, 16, rl.Gray)
+
+		if game.gameOver {
+			game.drawGameOver()
+		}
 
 		rl.EndDrawing()
 	}
