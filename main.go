@@ -243,9 +243,9 @@ func NewTerrain(audioSys *AudioSystem, windowHeight int32) *Terrain {
 		points:      []TerrainPoint{},
 		obstacles:   []Obstacle{},
 		scrollSpeed: 200.0,
-		baseY:       float32(windowHeight) - 150,
-		maxHeight:   150.0,
-		minHeight:   20.0,
+		baseY:       float32(windowHeight) - 80,
+		maxHeight:   80.0,
+		minHeight:   10.0,
 		analyzer:    audioSys.analyzer,
 	}
 
@@ -600,7 +600,7 @@ func (g *Game) update(dt float32) {
 
 	// Jump input
 	if rl.IsKeyPressed(rl.KeySpace) && g.player.canJump {
-		g.player.velocityY = -500
+		g.player.velocityY = -1000
 		g.player.isGrounded = false
 		g.player.canJump = false
 		g.board.current += 10
@@ -672,7 +672,7 @@ func main() {
 		windowHeight = 600
 	)
 
-	rl.InitWindow(windowWidth, windowHeight, "Waveform Surfing Rhythm Game")
+	rl.InitWindow(windowWidth, windowHeight, "Rythm game")
 	defer rl.CloseWindow()
 	rl.SetTargetFPS(60)
 
