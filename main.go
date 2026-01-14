@@ -210,11 +210,11 @@ func (as *AudioSystem) Close() {
 
 type Obstacle struct {
 	X         float32
-	Height    float32 // How high the red bar extends upward
+	Height    float32
 	TimeStamp float32
 	BeatIndex int
 	IsIntense bool
-	BottomY   float32 // Base position on waveform
+	BottomY   float32
 }
 
 // ============================================================================
@@ -283,17 +283,14 @@ func (t *Terrain) GenerateFromWaveform() {
 	}
 }
 
-// GenerateObstacles creates red bars at beats with intensity pattern
 func (t *Terrain) GenerateObstacles(beats []Beat) {
 	t.obstacles = []Obstacle{}
 
-	// Intensity pattern: 8 calm, 16 intense, 8 calm (repeating)
 	patternLength := 32
 	calmDuration := 8
 	intenseDuration := 16
 
 	for _, beat := range beats {
-		// Determine if this beat should have an obstacle
 		positionInPattern := beat.Index % patternLength
 
 		isIntense := false
@@ -301,22 +298,17 @@ func (t *Terrain) GenerateObstacles(beats []Beat) {
 			isIntense = true
 		}
 
-		// During calm sections, only spawn obstacles occasionally (30% chance)
 		if !isIntense && (beat.Index%10) < 7 {
-			continue // Skip this beat
+			continue
 		}
 
-		// Get terrain height at this beat position
 		terrainY := t.GetHeightAtTime(beat.TimeSeconds)
 
-		// Obstacle height varies based on intensity and beat strength
 		baseHeight := float32(60)
 		if isIntense {
-			// Intense sections have taller obstacles
-			baseHeight = 60 + (beat.Strength * 40) // 60-100 height
+			baseHeight = 60 + (beat.Strength * 40)
 		} else {
-			// Calm sections have shorter obstacles
-			baseHeight = 40 + (beat.Strength * 20) // 40-60 height
+			baseHeight = 40 + (beat.Strength * 20)
 		}
 
 		obstacle := Obstacle{
@@ -342,7 +334,6 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 	offset := currentTime * t.scrollSpeed
 	playerX := float32(windowWidth) / 3
 
-	// Draw waveform (blue wavy line)
 	for i := 0; i < len(t.points)-1; i++ {
 		p1 := t.points[i]
 		p2 := t.points[i+1]
@@ -353,7 +344,6 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 		y2 := p2.Y
 
 		if x2 >= -50 && x1 <= float32(windowWidth)+50 {
-			// Blue waveform
 			rl.DrawLineEx(
 				rl.Vector2{X: x1, Y: y1},
 				rl.Vector2{X: x2, Y: y2},
@@ -363,7 +353,6 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 		}
 	}
 
-	// Draw obstacles (red bars)
 	for _, obs := range t.obstacles {
 		x := playerX + (obs.X - offset)
 
@@ -371,13 +360,10 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 			continue
 		}
 
-		// Red bar extends upward from terrain
 		barWidth := float32(15)
 		topY := obs.BottomY - obs.Height
 
-		// Draw obstacle with glow effect
 		if obs.IsIntense {
-			// Intense obstacles glow more
 			rl.DrawRectangle(
 				int32(x-barWidth/2-3),
 				int32(topY-3),
@@ -387,7 +373,6 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 			)
 		}
 
-		// Main red bar
 		obstacleColor := rl.Red
 		if obs.IsIntense {
 			obstacleColor = rl.Color{R: 255, G: 50, B: 50, A: 255}
@@ -401,7 +386,6 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 			obstacleColor,
 		)
 
-		// Highlight top edge
 		rl.DrawRectangle(
 			int32(x-barWidth/2),
 			int32(topY),
@@ -411,7 +395,6 @@ func (t *Terrain) Draw(currentTime float32, windowWidth int32) {
 		)
 	}
 
-	// Draw baseline
 	rl.DrawLine(0, int32(t.baseY), windowWidth, int32(t.baseY), rl.DarkGray)
 }
 
@@ -436,20 +419,17 @@ func (t *Terrain) GetHeightAtTime(currentTime float32) float32 {
 	return t.points[idx].Y
 }
 
-// CheckObstacleCollision checks if player hits any obstacle
 func (t *Terrain) CheckObstacleCollision(currentTime float32, playerX, playerY, playerRadius float32, offset float32, windowWidth int32) bool {
 	playerScreenX := float32(windowWidth) / 3
 
 	for _, obs := range t.obstacles {
 		obsScreenX := playerScreenX + (obs.X - offset)
 
-		// Check if obstacle is near player horizontally
 		if math.Abs(float64(obsScreenX-playerX)) < 20 {
-			// Check if player is below the top of the obstacle
 			topY := obs.BottomY - obs.Height
 
 			if playerY+playerRadius > topY && playerY-playerRadius < obs.BottomY {
-				return true // Collision!
+				return true
 			}
 		}
 	}
@@ -483,16 +463,13 @@ func (s *Score) draw(health, maxHealth int32) {
 	scoreText := fmt.Sprintf("%d", s.current)
 	rl.DrawText(scoreText, 110, 20, 20, rl.White)
 
-	// Health bar
 	rl.DrawText("HEALTH:", 20, 50, 20, rl.Maroon)
 	barWidth := int32(200)
 	barHeight := int32(20)
 	healthRatio := float32(health) / float32(maxHealth)
 
-	// Background
 	rl.DrawRectangle(120, 50, barWidth, barHeight, rl.DarkGray)
 
-	// Health fill
 	healthColor := rl.Green
 	if healthRatio < 0.3 {
 		healthColor = rl.Red
@@ -501,8 +478,6 @@ func (s *Score) draw(health, maxHealth int32) {
 	}
 
 	rl.DrawRectangle(120, 50, int32(float32(barWidth)*healthRatio), barHeight, healthColor)
-
-	// Border
 	rl.DrawRectangleLines(120, 50, barWidth, barHeight, rl.White)
 }
 
@@ -514,22 +489,20 @@ type Player struct {
 	radius     float32
 	gravity    int32
 	isGrounded bool
-	canJump    bool
-	surfSpeed  float32 // Horizontal movement speed on waveform
+	jumpsLeft  int // NEW: Track remaining jumps
+	maxJumps   int // NEW: Maximum jumps allowed
+	surfSpeed  float32
 }
 
 func (p *Player) update(dt float32, terrainHeight float32) {
-	// Surfing on waveform - player sticks to terrain surface
 	if p.isGrounded {
 		p.centerY = terrainHeight - p.radius
 		p.velocityY = 0
 	} else {
-		// In air - apply gravity
 		p.velocityY += float32(p.gravity) * dt
 		p.centerY += p.velocityY * dt
 	}
 
-	// Horizontal surfing movement (A/D keys)
 	if rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyLeft) {
 		p.centerX -= p.surfSpeed * dt
 	}
@@ -537,29 +510,36 @@ func (p *Player) update(dt float32, terrainHeight float32) {
 		p.centerX += p.surfSpeed * dt
 	}
 
-	// Keep player on screen horizontally
 	if p.centerX < p.radius {
 		p.centerX = p.radius
 	}
-	if p.centerX > 450 { // Limit to left portion of screen
+	if p.centerX > 450 {
 		p.centerX = 450
 	}
 
-	// Check if should be grounded
 	playerBottom := p.centerY + p.radius
 	if playerBottom >= terrainHeight {
 		p.isGrounded = true
-		p.canJump = true
+		p.jumpsLeft = p.maxJumps // Reset jumps when grounded
 		p.centerY = terrainHeight - p.radius
 		p.velocityY = 0
 	}
 }
 
 func (p *Player) draw() {
+	// Main player circle
 	rl.DrawCircle(int32(p.centerX), int32(p.centerY), p.radius, rl.Maroon)
 	rl.DrawCircle(int32(p.centerX), int32(p.centerY), p.radius/2, rl.White)
 
-	// Draw surf trail effect when moving
+	// Draw double jump indicator when in air
+	if !p.isGrounded && p.jumpsLeft > 0 {
+		rl.DrawCircleLines(int32(p.centerX), int32(p.centerY), p.radius+5, rl.Yellow)
+		// Small number showing jumps left
+		jumpText := fmt.Sprintf("%d", p.jumpsLeft)
+		rl.DrawText(jumpText, int32(p.centerX-5), int32(p.centerY-30), 20, rl.Yellow)
+	}
+
+	// Surf trail effect when moving
 	if p.isGrounded && (rl.IsKeyDown(rl.KeyA) || rl.IsKeyDown(rl.KeyD)) {
 		rl.DrawCircle(int32(p.centerX), int32(p.centerY+p.radius), p.radius/3,
 			rl.Color{R: 135, G: 206, B: 235, A: 150})
@@ -577,7 +557,8 @@ func (g *Game) init() {
 	g.player.radius = 12
 	g.player.centerX = float32(g.windowWidth) / 3
 	g.player.centerY = 300
-	g.player.canJump = true
+	g.player.maxJumps = 10 // NEW: Allow 2 jumps total
+	g.player.jumpsLeft = 2 // NEW: Start with 2 jumps
 	g.player.surfSpeed = 250.0
 	g.board.current = 0
 	g.health = 3
@@ -595,15 +576,20 @@ func (g *Game) update(dt float32) {
 
 	terrainHeight := g.terrain.GetHeightAtTime(currentTime)
 
-	// Update player
 	g.player.update(dt, terrainHeight)
 
-	// Jump input
-	if rl.IsKeyPressed(rl.KeySpace) && g.player.canJump {
+	// Jump input - can jump if we have jumps left
+	if rl.IsKeyPressed(rl.KeySpace) && g.player.jumpsLeft > 0 {
 		g.player.velocityY = -1000
 		g.player.isGrounded = false
-		g.player.canJump = false
-		g.board.current += 10
+		g.player.jumpsLeft-- // Use one jump
+
+		// Bonus points for air jump (more skillful)
+		if g.player.jumpsLeft < g.player.maxJumps-1 {
+			g.board.current += 25 // Air jump bonus
+		} else {
+			g.board.current += 10 // Normal jump
+		}
 	}
 
 	// Variable jump
@@ -611,7 +597,6 @@ func (g *Game) update(dt float32) {
 		g.player.velocityY *= 0.5
 	}
 
-	// Check obstacle collision
 	if g.terrain.CheckObstacleCollision(
 		currentTime,
 		g.player.centerX,
@@ -624,17 +609,13 @@ func (g *Game) update(dt float32) {
 		if g.health <= 0 {
 			g.gameOver = true
 		}
-		// Brief invincibility after hit (remove nearby obstacles)
-		// This prevents multiple hits from same obstacle
 	}
 }
 
 func (g *Game) drawGameOver() {
-	// Semi-transparent overlay
 	rl.DrawRectangle(0, 0, g.windowWidth, g.windowHeight,
 		rl.Color{R: 0, G: 0, B: 0, A: 180})
 
-	// Game Over text
 	gameOverText := "GAME OVER"
 	textWidth := rl.MeasureText(gameOverText, 60)
 	rl.DrawText(gameOverText,
@@ -643,7 +624,6 @@ func (g *Game) drawGameOver() {
 		60,
 		rl.Red)
 
-	// Final score
 	scoreText := fmt.Sprintf("Final Score: %d", g.board.current)
 	scoreWidth := rl.MeasureText(scoreText, 30)
 	rl.DrawText(scoreText,
@@ -652,7 +632,6 @@ func (g *Game) drawGameOver() {
 		30,
 		rl.White)
 
-	// Restart instruction
 	restartText := "Press R to Restart"
 	restartWidth := rl.MeasureText(restartText, 20)
 	rl.DrawText(restartText,
@@ -668,15 +647,15 @@ func (g *Game) drawGameOver() {
 
 func main() {
 	const (
-		windowWidth  = 1200
-		windowHeight = 600
+		windowWidth  = 1920
+		windowHeight = 1080
 	)
 
-	rl.InitWindow(windowWidth, windowHeight, "Rythm game")
+	rl.InitWindow(windowWidth, windowHeight, "Rhythm Surfer")
 	defer rl.CloseWindow()
 	rl.SetTargetFPS(60)
 
-	audioFile := "song.wav" // <-- YOUR AUDIO FILE
+	audioFile := "song.wav"
 
 	game := Game{
 		paused:       false,
@@ -706,40 +685,29 @@ func main() {
 		dt := currentTime - lastTime
 		lastTime = currentTime
 
-		// Restart on R
 		if game.gameOver && rl.IsKeyPressed(rl.KeyR) {
-			//clear the screen
-
 			rl.StopMusicStream(game.audio.music)
-
 			NewGame(&game)
-
 			rl.PlayMusicStream(game.audio.music)
 			rl.SeekMusicStream(game.audio.music, 0)
 			game.audio.Play()
-
 		}
 
-		// Update
 		game.audio.Update()
 		game.update(dt)
 
-		// Draw
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Black)
 
 		currentSongTime := game.audio.GetCurrentTime()
 
-		// Draw game
 		game.terrain.Draw(currentSongTime, windowWidth)
 		game.player.draw()
 		game.board.draw(game.health, game.maxHealth)
 
-		// Instructions
 		rl.DrawText("SURF: A/D or Arrows", 20, windowHeight-60, 18, rl.SkyBlue)
-		rl.DrawText("JUMP: SPACE (to clear red bars!)", 20, windowHeight-35, 18, rl.Red)
+		rl.DrawText("JUMP: SPACE (double jump in air!)", 20, windowHeight-35, 18, rl.Yellow)
 
-		// Debug info
 		rl.DrawText(fmt.Sprintf("Obstacles: %d", len(game.terrain.obstacles)),
 			windowWidth-200, 20, 16, rl.Gray)
 		rl.DrawText(fmt.Sprintf("Time: %.2fs", currentSongTime),
